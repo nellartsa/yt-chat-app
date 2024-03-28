@@ -20,7 +20,7 @@ module.exports.register = async (req, res, next) => {
       password: hashedPassword,
     });
 
-    const { password: dbUserPass, ...rest } = user;
+    const { password: dbUserPass, ...rest } = user.toObject();
     res.json({ status: true, user: { ...rest } });
   } catch (err) {
     next(err);
@@ -39,7 +39,7 @@ module.exports.login = async (req, res, next) => {
     if (!isPasswordValid)
       return res.json({ msg: "Username or Password incorrect", status: false });
 
-    const { password: dbUserPass, ...rest } = user;
+    const { password: dbUserPass, ...rest } = user.toObject();
     res.json({ status: true, user: { ...rest } });
   } catch (err) {
     next(err);
