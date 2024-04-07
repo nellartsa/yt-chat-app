@@ -73,33 +73,35 @@ const SetAvatar = () => {
 
   return (
     <>
-      {isLoading ? (
-        <img className="loader" src={Loader} alt="" />
-      ) : (
-        <Container>
-          <div className="title-container">
-            <h1>Pick an avatar as your profile picture</h1>
-          </div>
-          <div className="avatars">
-            {avatars.map((avatar, index) => (
-              <div
-                key={index}
-                className={`avatar ${selected === index ? "selected" : ""}`}
-              >
-                <img
-                  src={`data:image/svg+xml;base64,${avatar}`}
-                  alt="avatar"
-                  onClick={() => setSelected(index)}
-                />
-              </div>
-            ))}
-          </div>
+      <Container>
+        {isLoading ? (
+          <img className="loader" src={Loader} alt="" />
+        ) : (
+          <>
+            <div className="title-container">
+              <h1>Pick an avatar as your profile picture</h1>
+            </div>
+            <div className="avatars">
+              {avatars.map((avatar, index) => (
+                <div
+                  key={index}
+                  className={`avatar ${selected === index ? "selected" : ""}`}
+                >
+                  <img
+                    src={`data:image/svg+xml;base64,${avatar}`}
+                    alt="avatar"
+                    onClick={() => setSelected(index)}
+                  />
+                </div>
+              ))}
+            </div>
 
-          <button className="submit-btn" onClick={handleSetProfileImage}>
-            Set as Profile Picture
-          </button>
-        </Container>
-      )}
+            <button className="submit-btn" onClick={handleSetProfileImage}>
+              Set as Profile Picture
+            </button>
+          </>
+        )}
+      </Container>
       <ToastContainer />
     </>
   );
