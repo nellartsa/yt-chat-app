@@ -8,6 +8,7 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const ws = require("ws");
 const User = require("./models/UserModel");
+const Message = require("./models/MessageModel");
 
 dotenv.config();
 mongoose
@@ -92,6 +93,7 @@ const server = app.listen(process.env.PORT, () => {});
 const wss = new ws.WebSocketServer({ server });
 
 wss.on("connection", (connection, req) => {
+  // read username and id from the cookie for this connection
   const cookies = req.headers.cookie;
   if (cookies) {
     const tokenCookieString = cookies
@@ -113,6 +115,35 @@ wss.on("connection", (connection, req) => {
     }
   }
 
+  connection.on("message", async (message) => {
+    const messageData = JSON.parse(message.toString());
+    const { recipient, text } = messageData;
+
+    console.log(messageData);
+
+    if (recipient && text) {
+      const messageDoc = await Message.create({
+        sender: connection.userId,
+        recipient,
+        text,
+      });
+
+      [...wss.clients]
+        .filter((c) => c.userId === recipient)
+        .forEach((c) =>
+          c.send(
+            JSON.stringify({
+              sender: connection.userId,
+              recipient,
+              text,
+              id: messageDoc._id,
+            })
+          )
+        );
+    }
+  });
+
+  // notify everyone about online people (when someone connects)
   [...wss.clients].forEach((client) => {
     client.send(
       JSON.stringify({
