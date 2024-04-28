@@ -1,12 +1,14 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { uniqBy } from "lodash";
-import Avatar from "./Avatar";
+import axios from "axios";
 import Logo from "./Logo";
 import { UserContext } from "./UserContext";
+import Contact from "./Contact";
 
 export default function Chat() {
   const [ws, setWs] = useState(null);
   const [onlinePeople, setOnlinePeople] = useState({});
+  const [offlinePeople, setOfflinePeople] = useState({});
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [newMessageText, setNewMessageText] = useState("");
   const [messages, setMessages] = useState([]);
@@ -14,11 +16,20 @@ export default function Chat() {
   const divUnderMessages = useRef();
 
   useEffect(() => {
+    connectToWs();
+  }, [selectedUserId]);
+
+  function connectToWs() {
     const ws = new WebSocket("ws://localhost:5000");
     setWs(ws);
 
     ws.addEventListener("message", handleMessage);
-  }, []);
+    ws.addEventListener("close", () => {
+      setTimeout(() => {
+        connectToWs();
+      }, 1000);
+    });
+  }
 
   function showOnlinePeople(peopleArray) {
     const people = {};
@@ -41,7 +52,7 @@ export default function Chat() {
 
   function sendMessage(ev) {
     ev.preventDefault();
-    console.log(newMessageText);
+
     ws.send(
       JSON.stringify({
         recipient: selectedUserId,
@@ -54,7 +65,7 @@ export default function Chat() {
         sender: id,
         recipient: selectedUserId,
         text: newMessageText,
-        id: Date.now(),
+        _id: Date.now(),
       },
     ]);
     setNewMessageText("");
@@ -67,6 +78,30 @@ export default function Chat() {
     }
   }, [messages]);
 
+  useEffect(() => {
+    axios.get("/people").then((res) => {
+      const offlinePeopleArr = res.data
+        .filter((p) => p._id !== id)
+        .filter((p) => !Object.keys(onlinePeople).includes(p._id));
+
+      const offlinePeople = {};
+      offlinePeopleArr.forEach((p) => {
+        offlinePeople[p._id] = p;
+      });
+
+      setOfflinePeople(offlinePeople);
+    });
+    console.log("fck");
+  }, [onlinePeople]);
+
+  useEffect(() => {
+    if (selectedUserId) {
+      axios.get("/messages/" + selectedUserId).then((res) => {
+        setMessages(res.data);
+      });
+    }
+  }, [selectedUserId]);
+
   return (
     <div className="flex h-screen">
       <div className="bg-white w-1/3">
@@ -74,22 +109,26 @@ export default function Chat() {
         {Object.keys(onlinePeople)
           .filter((userId) => userId !== id)
           .map((userId) => (
-            <div
+            <Contact
               key={userId}
+              id={userId}
+              online={true}
+              username={onlinePeople[userId]}
+              selected={userId === selectedUserId}
               onClick={() => setSelectedUserId(userId)}
-              className={
-                "border-b border-gray-100 flex gap-2 cursor-pointer" +
-                (userId === selectedUserId ? "bg-blue-50" : "")
-              }
-            >
-              {userId === selectedUserId && (
-                <div className="w-1 h-12 bg-blue-500 rounded-r-md"></div>
-              )}
-              <div className="flex gap-2 py-2 pl-4 items-center">
-                <Avatar username={onlinePeople[userId]} userId={userId} />
-                <span className="text-gray-800">{onlinePeople[userId]}</span>
-              </div>
-            </div>
+            />
+          ))}
+        {Object.keys(offlinePeople)
+          .filter((userId) => userId !== id)
+          .map((userId) => (
+            <Contact
+              key={userId}
+              id={userId}
+              online={false}
+              username={offlinePeople[userId].username}
+              selected={userId === selectedUserId}
+              onClick={() => setSelectedUserId(userId)}
+            />
           ))}
       </div>
       <div className="flex flex-col bg-blue-50 w-2/3 p-2">
@@ -103,9 +142,9 @@ export default function Chat() {
           {!!selectedUserId && (
             <div className="relative h-full">
               <div className="overflow-y-scroll absolute top-0 left-0 right-0 bottom-2">
-                {uniqBy(messages, "id").map((message) => (
+                {uniqBy(messages, "_id").map((message) => (
                   <div
-                    key={message.id}
+                    key={message._id}
                     className={
                       message.sender === id ? "text-right" : "text-left"
                     }

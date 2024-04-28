@@ -27,6 +27,38 @@ app.use(
   })
 );
 
+async function getUserDataFromRequest(req) {
+  return new Promise((resolve, reject) => {
+    const { token } = req.cookies;
+    if (token) {
+      jwt.verify(token, process.env.jwtSecret, {}, (err, userData) => {
+        if (err) throw err;
+        resolve(userData);
+      });
+    } else {
+      reject("no token");
+    }
+  });
+}
+
+app.get("/messages/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const userData = await getUserDataFromRequest(req);
+
+  const ourUserId = userData.userId;
+  const messages = await Message.find({
+    sender: { $in: [userId, ourUserId] },
+    recipient: { $in: [userId, ourUserId] },
+  }).sort({ createdAt: 1 });
+
+  res.json(messages);
+});
+
+app.get("/people", async (req, res) => {
+  const users = await User.find({}, { _id: 1, username: 1 });
+  res.json(users);
+});
+
 app.get("/profile", (req, res) => {
   const { token } = req.cookies;
   if (token) {
@@ -93,6 +125,35 @@ const server = app.listen(process.env.PORT, () => {});
 const wss = new ws.WebSocketServer({ server });
 
 wss.on("connection", (connection, req) => {
+  function notifyAboutOnlinePeople() {
+    [...wss.clients].forEach((client) => {
+      client.send(
+        JSON.stringify({
+          online: [...wss.clients].map((c) => ({
+            userId: c.userId,
+            username: c.username,
+          })),
+        })
+      );
+    });
+  }
+
+  connection.isAlive = true;
+  connection.timer = setInterval(() => {
+    connection.ping();
+
+    connection.deathTimer = setTimeout(() => {
+      connection.isAlive = false;
+      console.log("death");
+      connection.terminate();
+      notifyAboutOnlinePeople();
+    }, 1000);
+  }, 5000);
+
+  connection.on("pong", () => {
+    clearTimeout(connection.deathTimer);
+  });
+
   // read username and id from the cookie for this connection
   const cookies = req.headers.cookie;
   if (cookies) {
@@ -115,11 +176,10 @@ wss.on("connection", (connection, req) => {
     }
   }
 
+  // save message to db
   connection.on("message", async (message) => {
     const messageData = JSON.parse(message.toString());
     const { recipient, text } = messageData;
-
-    console.log(messageData);
 
     if (recipient && text) {
       const messageDoc = await Message.create({
@@ -128,6 +188,7 @@ wss.on("connection", (connection, req) => {
         text,
       });
 
+      // filter users to send only to its recipient
       [...wss.clients]
         .filter((c) => c.userId === recipient)
         .forEach((c) =>
@@ -136,7 +197,7 @@ wss.on("connection", (connection, req) => {
               sender: connection.userId,
               recipient,
               text,
-              id: messageDoc._id,
+              _id: messageDoc._id,
             })
           )
         );
@@ -144,14 +205,5 @@ wss.on("connection", (connection, req) => {
   });
 
   // notify everyone about online people (when someone connects)
-  [...wss.clients].forEach((client) => {
-    client.send(
-      JSON.stringify({
-        online: [...wss.clients].map((c) => ({
-          userId: c.userId,
-          username: c.username,
-        })),
-      })
-    );
-  });
+  notifyAboutOnlinePeople();
 });
