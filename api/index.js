@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const ws = require("ws");
+const fs = require("fs");
 const User = require("./models/UserModel");
 const Message = require("./models/MessageModel");
 
@@ -18,6 +19,7 @@ mongoose
 const bcryptSalt = bcrypt.genSaltSync(10);
 
 const app = express();
+app.use("/uploads", express.static(__dirname + "/uploads"));
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(
@@ -94,6 +96,10 @@ app.post("/login", async (req, res) => {
   }
 });
 
+app.post("/logout", (req, res) => {
+  res.cookie("token", "", { sameSite: "none", secure: true }).json("ok");
+});
+
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -144,6 +150,7 @@ wss.on("connection", (connection, req) => {
 
     connection.deathTimer = setTimeout(() => {
       connection.isAlive = false;
+      clearInterval(connection.timer);
       console.log("death");
       connection.terminate();
       notifyAboutOnlinePeople();
@@ -179,13 +186,29 @@ wss.on("connection", (connection, req) => {
   // save message to db
   connection.on("message", async (message) => {
     const messageData = JSON.parse(message.toString());
-    const { recipient, text } = messageData;
+    const { recipient, text, file } = messageData;
+    let filename = null;
 
-    if (recipient && text) {
+    if (file) {
+      const parts = file.name.split(".");
+      const ext = parts[parts.length - 1];
+      filename = Date.now() + "." + ext;
+      const path = __dirname + "/uploads/" + filename;
+      const bufferData = Uint8Array.from(atob(file.data.split(",")[1]), (c) =>
+        c.charCodeAt(0)
+      );
+
+      fs.writeFile(path, bufferData, () => {
+        console.log("file saved");
+      });
+    }
+
+    if (recipient && (text || file)) {
       const messageDoc = await Message.create({
         sender: connection.userId,
         recipient,
         text,
+        file: file ? filename : null,
       });
 
       // filter users to send only to its recipient
@@ -197,6 +220,7 @@ wss.on("connection", (connection, req) => {
               sender: connection.userId,
               recipient,
               text,
+              file: file ? filename : null,
               _id: messageDoc._id,
             })
           )

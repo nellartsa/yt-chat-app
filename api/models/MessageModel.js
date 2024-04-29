@@ -11,6 +11,7 @@ const MessageSchema = mongoose.Schema(
       ref: "User",
     },
     text: String,
+    file: String,
   },
   { timestamps: true }
 );
